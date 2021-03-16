@@ -1,4 +1,4 @@
-# ARCH-GARCH-Modeling-Selection
+# An Automated ARCH-GARCH Modeling Selection Tutorial
 
 In this tutorial, an Automated Selection for ARCH-GARCH modeling procedure is applied for the Unemployment Rate in U.S. monthly data starting from 1980 to 2019 December. The purpose is to find the best model based on 4 different criteria, namely AIC, BIC, Test RMSE, Test MAPE. This way, 4 different model is suggested for the decision maker and s/he can choose among them having the lowest criteria for his/her own purpose. 
 
