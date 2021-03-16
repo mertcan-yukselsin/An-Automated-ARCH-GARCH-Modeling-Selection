@@ -10,3 +10,5 @@ While creating this model selection tutorial, mainly the article "A GARCH Tutori
 # References
 
 Perlin, Marcelo & Mastella, Mauro & Vancin, Daniel & Ramos, Henrique. (2021). A GARCH Tutorial with R. Revista de Administração Contemporânea. 25. 10.1590/1982-7849rac2021200088. 
+
+U.S. Bureau of Labor Statistics, Unemployment Rate [UNRATE], retrieved from FRED, Federal Reserve Bank of St. Louis; https://fred.stlouisfed.org/series/UNRATE, November 19, 2020.
