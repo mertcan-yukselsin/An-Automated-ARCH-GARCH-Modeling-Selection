@@ -1,0 +1,243 @@
+---
+title: "ARCH-GARCH Selection Modeling Tutorial"
+author: "Mertcan Yükselsin"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::robobook:
+    highlight: kate
+---
+
+# Introduction
+
+In this tutorial, an Automated Selection for ARCH-GARCH modeling procedure is applied for the Unemployment Rate in U.S. monthly data starting from 1980 to 2019 December. The purpose is to find the best model based on 4 different criteria, namely **AIC, BIC, Test RMSE, Test MAPE**. This way, 4 different model is suggested for the decision maker and s/he can choose among them having the lowest criteria.
+
+
+# Necessary Libraries
+
+```{r,warning=FALSE,message=FALSE}
+library(tidyverse)
+library(rugarch)
+library(rmgarch)
+library(anomalize)
+library(tseries)
+library(forecast)
+```
+
+
+
+# Introducing Data
+
+
+```{r}
+data=read.csv("UNRATE.csv")
+data=ts(data$UNRATE,start=1980,frequency = 12)
+```
+
+
+
+```{r}
+train=window(data,end=c(2018,12))
+test=window(data,start=2019)
+```
+
+
+
+```{r,message=FALSE,warning=FALSE}
+UNRATE <- read_csv("UNRATE.csv") 
+train_tibble=UNRATE[1:468, ] 
+train_tibble$UNRATE= train_tibble$UNRATE 
+train_tibble=as.tibble(train_tibble)
+
+train_anomalized_tbl <- train_tibble %>% time_decompose(UNRATE,method = "stl") %>% 
+  mutate(observed = ifelse(observed < 0, 0, observed)) %>% 
+  anomalize(remainder,method = "gesd", alpha = 0.05, max_anoms = 0.2) %>% 
+  clean_anomalies() 
+
+train_anomalized_tbl=train_anomalized_tbl %>% select(DATE, anomaly, observed, observed_cleaned)
+
+train_deanomalized_data=ts(data.frame(Unrate=train_anomalized_tbl$observed_cleaned),start=1980,frequency=12)
+```
+
+
+
+
+# Modeling Procedure
+
+Here, for practical purposes, only eGARCH model is used and 2 different distribution is used. One can also increase the number of usage in models, distributions or the lag orders(in that case, do not forget to increase the values in for loops such as  i in 1:2, j in 1:3 etc. ).
+
+
+
+
+```{r}
+#model_fit_spec=ugarchspec(variance.model = list(model ='eGARCH', 
+#                                                            garchOrder = c(1,2)),
+#                                      mean.model = list(armaOrder = c(1,1)),
+#                                      distribution.model = 'norm')
+#my_best_garch= ugarchfit(spec = model_fit_spec, 
+#                         data = train_deanomalized_data)
+#
+#sum(my_best_garch@fit$robust.matcoef[,4]>0.05)/nrow(my_best_garch@fit$robust.matcoef)
+#sum(my_best_garch@model$pars[,1]) < 1
+```
+
+
+
+```{r,message=FALSE,warning=FALSE}
+forecasts_arch=as.data.frame(matrix(ncol=6,nrow=1*2*3*3*3*3))
+colnames(forecasts_arch)=c("AIC","BIC","Test RMSE","Test MAPE","RobustStandError_pvalue>0.05(atleasthalf)","Sumcoeff<1")
+models_to_estimate <- c('eGARCH')
+dist_to_use <- c('norm', 'std')
+a=1
+
+
+for(i in 1:1){
+  for(j in 1:2){
+    for(k in 0:2){
+      for(l in 0:2){
+        for(m in 0:2){
+          for(n in 0:2){
+            model_fit_spec=ugarchspec(variance.model = list(model = models_to_estimate[i], 
+                                                            garchOrder = c(k,l)),
+                                      mean.model = list(armaOrder = c(m,n)),
+                                      distribution.model = dist_to_use[j])
+            my_best_garch= ugarchfit(spec = model_fit_spec, 
+                           data = train_deanomalized_data)
+            
+            if(!is.null(coef(my_best_garch))){
+              forecasts_arch[a,1]=rugarch::infocriteria(my_best_garch)[1]
+              forecasts_arch[a,2]=rugarch::infocriteria(my_best_garch)[2]
+              f<-ugarchforecast(my_best_garch,n.ahead = 12)
+              s<-as.vector(f@forecast$seriesFor)
+              bootp=ugarchboot(my_best_garch,method="Partial",n.ahead =12,
+                               n.bootpred=1000,n.bootfit=1000)
+              s_f=bootp@forc@forecast$seriesFor #this is for series forecasts
+              s_f1=as.vector(s_f)
+              forecasts_arch[a,3]=accuracy(s_f1,test)[2]
+              forecasts_arch[a,4]=accuracy(s_f1,test)[5]
+              forecasts_arch[a,5]=sum(my_best_garch@fit$robust.matcoef[,4]>0.05)/nrow(my_best_garch@fit$robust.matcoef) #if the output is TRUE, then at least half of the observations are not significant.
+              forecasts_arch[a,6]=sum(my_best_garch@model$pars[,1]) < 1 #if it is TRUE, that's good.
+              rownames(forecasts_arch)[a]=paste("Model name:",
+                                                models_to_estimate[i],"Dist:",dist_to_use[j],
+                                                "GarchAR:", as.character(k), "GarchMA:",
+                                              as.character(l),"AR:",
+                                              as.character(m),"MA:",as.character(n))
+              a=a+1
+            }
+            else{
+              forecasts_arch[a,]=NA
+              rownames(forecasts_arch)[a]=paste("Model name:",
+                                                models_to_estimate[i],"Dist:",dist_to_use[j],
+                                                "GarchAR:", as.character(k), "GarchMA:",
+                                              as.character(l),"AR:",
+                                              as.character(m),"MA:",as.character(n))
+              a=a+1
+              
+            }
+
+            
+            
+          }
+        }
+      }
+    }
+  }
+}
+
+          
+          
+          
+
+```
+
+
+```{r}
+tail(forecasts_arch)
+```
+
+
+
+```{r}
+forecasts_arch[which.min(forecasts_arch$AIC),] #having min AIC
+forecasts_arch[which.min(forecasts_arch$BIC),] #having min BIC 
+forecasts_arch[which.min(forecasts_arch$`Test RMSE`),] #having min RMSE
+forecasts_arch[which.min(forecasts_arch$`Test MAPE`),] #having min MAPE
+forecasts_arch[which.min(forecasts_arch$`Test RMSE` &
+                           forecasts_arch$`RobustStandError_pvalue>0.05(atleasthalf)`),] #having min RMSE and the number of robust standerror being significant is the most
+```
+
+
+
+
+
+
+# Fitting the Best Model 
+
+We can choose the best model based on having the minimum RMSE and MAPE test value which are providing the same model for us.
+
+
+```{r}
+model_fit_spec=ugarchspec(variance.model = list(model = "eGARCH", 
+                                                            garchOrder = c(1,2)),
+                                      mean.model = list(armaOrder = c(2,1)),
+                                      distribution.model = "std")
+            my_best_garch= ugarchfit(spec = model_fit_spec, 
+                           data = train_deanomalized_data)
+
+print(my_best_garch)
+```
+
+
+
+
+```{r}
+f<-ugarchforecast(my_best_garch,n.ahead = 12)
+s<-as.vector(f@forecast$seriesFor)
+bootp=ugarchboot(my_best_garch,method="Partial",n.ahead = 12,n.bootpred=1000,n.bootfit=1000)
+
+s_f=bootp@forc@forecast$seriesFor #this is for series forecasts
+s_f1=as.vector(s_f) #for comparison, we make the forecasts as vector.
+
+v_f=bootp@forc@forecast$sigmaFor#this is for variance forecasts
+
+train_garch_fitted=ts(as.vector(my_best_garch@fit$fitted.values),start=1980,frequency = 12) #fitted values
+
+```
+
+
+```{r}
+forecast_accuracy_garch=rbind(accuracy(train_garch_fitted,train_deanomalized_data), #train
+accuracy(s_f1,test)) #test
+
+rownames(forecast_accuracy_garch)=c("Train set","Test set")
+forecast_accuracy_garch
+```
+
+
+
+```{r}
+autoplot(train_deanomalized_data,colour="black",series="Series")+autolayer(train_garch_fitted,series="Fitted")+
+  geom_vline(xintercept = 2019,col="red",size=1)+ylab("UNRATE") +ggtitle("Forecasts from GARCH Model")+ xlab("Date")+
+  autolayer(ts(s_f1,start=2019,frequency=12),series="Forecast",showgap = FALSE)+
+  autolayer(test,series="Test")+
+  theme(plot.title = element_text(color = "black", size = 12, face = "bold",hjust = 0.5))+
+  theme_minimal()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
